@@ -3,11 +3,7 @@ const querystring = require("querystring");
 const port = process.env.PORT || 3000;
 const app = express();
 const mongoose = require('mongoose');
-const DBUser = 'admin';
-const DBPassword = 'adminadmin1';
-const DBURI = 'ds019886.mlab.com:19886';
-const DBName = 'klack';
-
+const connectionString = process.env.CONNECTION_STRING || 'mongodb://localhost:27017/klack';
 
 // List of all messages
 // let messages = [];
@@ -23,12 +19,24 @@ const db = mongoose.connection;
 db.on('error', console.error.bind(console, 'database connection error:'));
 db.once('open', function () {
   console.log("we're connected")
+  
+
+  const userSchema = new mongoose.Schema({
+    user: String,
+    lastActive: String
+  })
   const messageSchema = new mongoose.Schema({
     sender: String,
     message: String,
     timestamp: Number
   })
-  const Message = mongoose.model('Message', messageSchema)
+  const Message = mongoose.model('Message', messageSchema);
+  // const User = mongoose.model('User', userSchema);
+  Message.find({}).then(messages => {
+    messages.forEach(message => users[message.sender] = message.timestamp)
+  })
+
+
 
   // generic comparison function for case-insensitive alphabetic sorting on the name field
   function userSortFn(a, b) {
@@ -53,14 +61,14 @@ db.once('open', function () {
     const requireActiveSince = now - 15 * 1000;
 
     // create a new list of users with a flag indicating whether they have been active recently
-    usersSimple = Object.keys(users).map(x => ({
+    let usersSimple = Object.keys(users).map(x => ({
       name: x,
       active: users[x] > requireActiveSince
     }));
 
     // sort the list of users alphabetically by name
     usersSimple.sort(userSortFn);
-    usersSimple.filter(a => a.name !== request.query.for);
+    // usersSimple = usersSimple.filter(a => a.name !== request.query.for);
 
     // update the requesting user's last access time
     users[request.query.for] = now;
@@ -78,25 +86,29 @@ db.once('open', function () {
     const timestamp = Date.now();
     request.body.timestamp = timestamp;
 
-    // append the new message to the message list
-    // messages.push(request.body);
-    let newMessage = new Message({
-      sender: request.body.sender,
-      message: request.body.message,
-      timestamp: request.body.timestamp
-    })
-    newMessage.save()
-
-    // update the posting user's last access timestamp (so we know they are active)
     users[request.body.sender] = timestamp;
 
-    // Send back the successful response.
-    response.status(201);
-    response.send(request.body);
+    Message.create({
+        sender: request.body.sender,
+        message: request.body.message,
+        timestamp: request.body.timestamp
+      },
+      (err, newMessage) => {
+        // Send back the successful response.
+        if (err !== null) {
+          response.status(500)
+          response.send(err)
+          return
+        }
+        response.status(201);
+        response.send(request.body);
+
+      })
   });
 
 });
-    app.listen(port, () => {
-      mongoose.connect(`mongodb://${DBUser}:${DBPassword}@${DBURI}/${DBName}`)
-      console.log('listening on port ' + port)
-    });
+app.listen(port, () => {
+  mongoose.connect(connectionString)
+  // mongoose.connect(`mongodb://${DBUser}:${DBPassword}@${DBURI}/${DBName}`)
+  console.log('listening on port ' + port)
+});
